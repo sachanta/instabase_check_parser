@@ -11,14 +11,14 @@ logging.basicConfig(filename='app.log', format='%(asctime)s - %(message)s')
 # Creating the low level functional client
 client = boto3.client(
     's3',
-    aws_access_key_id = 'AKIA5JWEI5SGQTWJEPHG',
-    aws_secret_access_key = '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',
+    aws_access_key_id = 'xxx',
+    aws_secret_access_key = 'xxx',
     region_name = 'us-east-2'
 )
 s3 = boto3.resource("s3",
                   region_name='us-east-1',
-                  aws_access_key_id='AKIA5JWEI5SGQTWJEPHG',
-                  aws_secret_access_key='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')
+                  aws_access_key_id='xxx',
+                  aws_secret_access_key='xxx')
 
 bucket1 = s3.Bucket('instacaffeteria01')
 '''

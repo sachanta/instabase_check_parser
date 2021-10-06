@@ -1,13 +1,26 @@
+import os
 import boto3
 import datetime
 import pytesseract as pt
 import logging
-from getpass import getpass
-from mysql.connector import connect, Error
+import logging.handlers
+
+from mysql.connector import connect, Error, errors
 from io import BytesIO
 from PIL import Image
+from pathlib import Path
+from mysql.connector import errorcode
 
-logging.basicConfig(filename='app.log', format='%(asctime)s - %(message)s')
+log_file_path = f'{os.getcwd()}/logs/'
+Path(log_file_path).mkdir(parents=True, exist_ok=True)
+log_file = f'{log_file_path}{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}'
+handler = logging.handlers.WatchedFileHandler(
+    os.environ.get("LOGFILE", log_file))
+formatter = logging.Formatter(logging.BASIC_FORMAT)
+handler.setFormatter(formatter)
+root = logging.getLogger()
+root.setLevel(os.environ.get("LOGLEVEL", "INFO"))
+root.addHandler(handler)
 
 # variables
 bucket_name = 'instacaffeteria01'
@@ -68,10 +81,19 @@ def check_int(potential_int):
 
 
 def parse_text(key, text):
-    #print(text)
+
+    try:
+        file_path = f'{os.getcwd()}/unstructured_checks_text/'
+        Path(file_path).mkdir(parents=True, exist_ok=True)
+        check_text = f'{file_path}{key}.txt'
+        with open(check_text, 'w+') as f:
+            f.write(text)
+            f.close
+    except FileNotFoundError as e:
+        logging.error(e)
+
     check_dict = {}
     # Split the string into individual rows and cleanup
-    # Write code to populate the list below
     rows = text.split("\n")
     rows = [row.strip() for row in rows if not row.isspace() and row]
     try:
@@ -79,37 +101,37 @@ def parse_text(key, text):
             items = row.split(" ")
             if items[0] == 'Tips':
                 if len(items) < 2:
-                    print(f'Check - {key} has invalid entry for tips - {row}. Setting tips as - $0')
+                    logging.info(f'Check - {key} has invalid entry for tips - {row}. Setting tips as - $0')
                     check_dict['tips'] = '0.0'
                     continue
                 if check_float(items[1]):
                     check_dict['tips'] = items[1]
                 else:
-                    print(f'Check - {key} has invalid entry for tips - {items[1]}. Setting tips as - $0')
+                    logging.info(f'Check - {key} has invalid entry for tips - {items[1]}. Setting tips as - $0')
                     check_dict['tips'] = '0.0'
             if items[0] == 'Total':
                 if len(items) < 2:
-                    print(f'Check - {key} has invalid entry for total - {row}. Setting total as - $0')
+                    logging.info(f'Check - {key} has invalid entry for total - {row}. Setting total as - $0')
                     check_dict['total'] = '0.0'
                     continue
                 if check_float(items[1]):
                     check_dict['total'] = items[1]
                 else:
-                    print(f'Check - {key} has invalid entry for total - {items[1]}. Setting it as - $0')
+                    logging.info(f'Check - {key} has invalid entry for total - {items[1]}. Setting it as - $0')
                     check_dict['total'] = '0.0'
             if items[0] == 'Server:':
                 if len(items) < 4:
-                    print(f'Check - {key} has invalid entry for Server or Time - {row}. setting time as 10:10 AM')
+                    logging.info(f'Check - {key} has invalid entry for Server or Time - {row}. setting time as 10:10 AM')
                     in_time = datetime.datetime.strptime("10:10 AM", "%I:%M %p")
                     out_time = datetime.datetime.strftime(in_time, "%H:%M")
                     if len(items) < 2:
-                        print(f'Check - {key} has invalid entry for Server or Time - {row}. setting server name as - Unknown')
+                        logging.info(f'Check - {key} has invalid entry for Server or Time - {row}. setting server name as - Unknown')
                         check_dict['server'] = 'Unknown'
                     else:
                         check_dict['server'] = items[1]
                     continue
                 if len(items) < 2:
-                    print(f'Check - {key} has invalid entry for Server or Time - {row}. setting server name as - Unknown')
+                    logging.info(f'Check - {key} has invalid entry for Server or Time - {row}. setting server name as - Unknown')
                     check_dict['server'] = 'Unknown'
                 else:
                     check_dict['server'] = items[1]
@@ -122,7 +144,7 @@ def parse_text(key, text):
                 out_time = datetime.datetime.strftime(in_time, "%H:%M")
             if items[0] == 'Check':
                 if len(items) < 4:
-                    print(f'Check - {key} has invalid entry for date or check number - {row}. setting date as 10/03/2021 and check number to 0')
+                    logging.info(f'Check - {key} has invalid entry for date or check number - {row}. setting date as 10/03/2021 and check number to 0')
                     check_date = datetime.datetime.strptime('10/03/2021', "%m/%d/%Y").strftime("%Y-%m-%d")
                     check_dict['check_number'] = items[2]
                     continue
@@ -130,48 +152,48 @@ def parse_text(key, text):
                 if check_int(items[2]):
                     check_dict['check_number'] = items[2]
                 else:
-                    print(f'Check - {key} has invalid entry for check number - {items[2]}. Setting check number as - 0')
+                    logging.info(f'Check - {key} has invalid entry for check number - {items[2]}. Setting check number as - 0')
                     check_dict['check_number'] = 0
 
             if items[0] == 'Table:':
                 if len(items) < 4:
-                    print(f'Check - {key} has invalid entry for table number or guests - {row}. setting those to 0')
+                    logging.info(f'Check - {key} has invalid entry for table number or guests - {row}. setting those to 0')
                     check_dict['table_number'] = 0
                     check_dict['guests'] = 0
                     continue
                 if check_int(items[1]):
                     check_dict['table_number'] = int(items[1])
                 else:
-                    print(f'Check - {key} has invalid entry for table number - {items[2]}. Setting table number as - 0')
+                    logging.info(f'Check - {key} has invalid entry for table number - {items[2]}. Setting table number as - 0')
                     check_dict['table_number'] = 0
                 if check_int(items[3]):
                     check_dict['guests'] = int(items[3])
                 else:
-                    print(f'Check - {key} has invalid entry for guests - {items[3]}. Setting guests as - 0')
+                    logging.info(f'Check - {key} has invalid entry for guests - {items[3]}. Setting guests as - 0')
                     check_dict['guests'] = 0
             if items[0] == 'Sub-total':
                 if len(items) < 2:
-                    print(f'Check - {key} has invalid entry for sub total - {row}. Setting sub total as - $0')
+                    logging.info(f'Check - {key} has invalid entry for sub total - {row}. Setting sub total as - $0')
                     check_dict['sub_total'] = '0.0'
                     continue
                 if check_float(items[1]):
                     check_dict['sub_total'] = items[1]
                 else:
-                    print(f'Check - {key} has invalid entry for sub total - {items[1]}. Setting it as - $0')
+                    logging.info(f'Check - {key} has invalid entry for sub total - {items[1]}. Setting it as - $0')
                     check_dict['sub_total'] = '0.0'
             if items[0] == 'Sales':
                 if len(items) < 3:
-                    print(f'Check - {key} has invalid entry for sales tax - {row}. Setting sales tax as - $0')
+                    logging.info(f'Check - {key} has invalid entry for sales tax - {row}. Setting sales tax as - $0')
                     check_dict['sales_tax'] = '0.0'
                     continue
                 if check_float(items[2]):
                     check_dict['sales_tax'] = items[2]
                 else:
-                    print(f'Check - {key} has invalid entry for sales tax - {items[2]}. Setting it as - $0')
+                    logging.info(f'Check - {key} has invalid entry for sales tax - {items[2]}. Setting it as - $0')
                     check_dict['sales_tax'] = '0.0'
 
     except Error as e:
-        logging.ERROR(e)
+        logging.error(e)
 
     date_time = datetime.datetime.strptime(check_date + " " + out_time, "%Y-%m-%d %H:%M")
     date_time = datetime.datetime.strftime(date_time, "%Y-%m-%d %H:%M")
@@ -180,7 +202,7 @@ def parse_text(key, text):
     return check_dict
 
 
-def insert_check(check_dict):
+def insert_check(key, check_dict):
     try:
         with connect(
                 host= mysql_host,
@@ -189,27 +211,33 @@ def insert_check(check_dict):
                 database= mysql_database,
         ) as connection:
             with connection.cursor() as cursor:
-
-                insert_query = f"INSERT INTO checks (check_number, server, table_number, guests, sub_total, sales_tax, date_time, tips, total) " \
-                               f"SELECT * FROM (SELECT '{check_dict['check_number']}' as check_num, '{check_dict['server']}' as server , '{check_dict['table_number']}' as table_num, '{check_dict['guests']}' as quests, '{check_dict['sub_total']}' as sub_total, '{check_dict['sales_tax']}' as sales_tax, '{check_dict['date_time']}' as date_time, {check_dict['tips']} as tips,{check_dict['total']} as total) AS TMP " \
-                               f"WHERE NOT EXISTS (SELECT * FROM CHECKS WHERE server='{check_dict['server']}' AND date_time='{check_dict['date_time']}' AND tips={check_dict['tips']} AND total={check_dict['total']})"
-                #print(insert_query)
+                insert_query = f"INSERT INTO checks (check_name, check_number, server, table_number, guests, sub_total, sales_tax, date_time, tips, total) " \
+                               f"values('{key}', '{check_dict['check_number']}', '{check_dict['server']}', '{check_dict['table_number']}', '{check_dict['guests']}', '{check_dict['sub_total']}', '{check_dict['sales_tax']}', '{check_dict['date_time']}', {check_dict['tips']}, {check_dict['total']})"
                 cursor.execute(insert_query)
                 connection.commit()
                 cursor.close()
                 connection.close()
+    except errors.IntegrityError as e:
+        logging.error(e)
+        print(e)
     except Error as e:
-        logging.ERROR(e)
+        logging.error(e)
         print(e)
 
-
-count = 0
 for obj in bucket1.objects.all():
-    if count == 28:
         file_byte_string = client.get_object(Bucket=obj.bucket_name, Key=obj.key)['Body'].read()
-        logging.info(obj.key)
-        print(obj.key)
+        key = str(obj.key).split(".")[0]
+        logging.info(key)
+        print(key)
+        try:
+            file_path = f'{os.getcwd()}/'
+            Path(file_path).mkdir(parents=True, exist_ok=True)
+            check_file_names = f'{file_path}check_file_names-{datetime.datetime.now().strftime("%Y%m%d-%H%M%S")}.txt'
+            with open(check_file_names, 'w+') as f:
+                f.write(key + "\n")
+                f.close
+        except FileNotFoundError as e:
+            logging.error(e)
         img = Image.open(BytesIO(file_byte_string))
-        check_dict = parse_text(obj.key, pt.image_to_string(img))
-        insert_check(check_dict)
-    count += 1
+        check_dict = parse_text(key, pt.image_to_string(img))
+        insert_check(key, check_dict)
